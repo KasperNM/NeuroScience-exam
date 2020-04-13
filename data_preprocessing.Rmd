@@ -1,0 +1,270 @@
+---
+title: "WordFace Data Analysis"
+author: "Kasper"
+date: "26/3/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(fs)
+library(lubridate)
+```
+### Helper functions
+```{r}
+extract_time_from_filename <- function(filename) {
+  # Get time within parentheses using regex-voodoo
+  time_string <- str_extract(filename, "(?<=\\().+?(?=\\))")
+  # return the timestamp as time-datatype
+  lubridate::ymd_hms(time_string)
+}
+
+# Reads the file and adds the timestamp
+read_exp_files <- function(file_path) {
+  temp_df <- read_csv(file_path, col_types = cols(.default = "c"))
+  temp_df %>% mutate(time_stamp = extract_time_from_filename(file_path))
+}
+
+
+is_numeric_character <- function(x) {
+  !any(is.na(suppressWarnings(as.numeric(x)))) & is.character(x)
+}
+
+# Returns time of day in decimal-hour format
+time_of_day <- function(date_vec) {
+  hour(date_vec) + minute(date_vec)/60 + second(date_vec)/3600
+}
+
+```
+
+# Load data
+```{r}
+#################
+# Get all files #
+#################
+# Put the files from the old semester in a folder called "old_data" in your working directory (or change the path below)
+old_files <- dir_ls(path = "./old_data/", glob="*csv")
+# Same for the new files (our year) :-)
+new_files <- dir_ls(path = "./new_data/", glob="*csv")
+
+df_old <- old_files %>% 
+  map_dfr(read_exp_files)
+df_new <- new_files %>% 
+  map_dfr(read_exp_files)
+
+################
+# Joining data #
+################
+common_col_names <- intersect(colnames(df_old), colnames(df_new))
+WordFace <- df_old %>% 
+  select(common_col_names) %>% 
+  bind_rows(select(df_new, common_col_names))
+
+#####################
+# Fixing data types #
+#####################
+WordFace <- WordFace %>% 
+  mutate(rt = as.numeric(rt)) %>% 
+  # Making all the numeric columns numeric
+  mutate_if(sapply(., is_numeric_character), as.numeric)
+
+##########################
+# mutating and filtering #
+##########################
+
+#{  
+  
+  #if(iii ==1) WordFace4=Wordface else if(length($ID)>0) WordFace=bind(data1,WordFace)
+#}
+
+WordFace <- WordFace %>% 
+  filter(correct_resp == 1) %>% 
+  # Filtering away Nina's shenanigans
+  filter(!(ID %in% c('holymolly', 'owl', 'pjh', 'roo', 'yogafrogen', 'vicedor'))) %>% 
+  # Creating lag-columns ("one-back" in original)
+  mutate(imgN1 = lag(img), 
+         word_labelN1 = lag(word_label),
+         word_score_pcN1 = lag(word_score_pc)) %>% 
+  # Create time of day in a cleaner way (yay!)
+  mutate(time = time_of_day(time_stamp + onset_img)) %>% 
+  #Principal components come with unpredictable sign. Here Positive has become negeative, so we reverse
+  mutate(word_score_pc = -word_score_pc, 
+         word_score_pcN1 = -word_score_pcN1)
+
+### Scaling ### 
+
+#scale pc score for analysis
+WordFace$word_score_pc_sc <- scale(WordFace$word_score_pc)
+#Square for analysis
+WordFace$word_score_pc_sq <- WordFace$word_score_pc_sc^2
+#scale pc score at time -1 for analysis
+WordFace$word_score_pcN1_sc <- scale(WordFace$word_score_pcN1)
+#Square for analysis
+WordFace$word_score_pcN1_sq <- WordFace$word_score_pcN1_sc^2
+#scale time of day for analysis
+WordFace$time_sc <- scale(WordFace$time)
+#Square for analysis
+WordFace$time_sq <- scale(WordFace$time)^2
+#scale trial number for analysis
+WordFace$no_sc <- scale(WordFace$no)
+#Scale pause duration for analysis
+WordFace$delay_frames_before_sc <- scale(WordFace$delay_frames_before)
+
+WordFace=subset(WordFace,rt>0.1)
+
+subset <-  subset(WordFace, ID == "001")
+subset %>% group_by(word_label)
+ggplot(subset, aes(x = word_label, y = rt)) +
+ geom_boxplot()
+
+subset$correct <- sum(subset$correct_resp == 1)/360
+
+
+#Possible hypotheses:
+#- Reaction time is faster when participants could predict the face (positive/negative words in advance) than when the neutral word was presented
+#Model 1 showed that positive and negative responses yielded a significant faster responsetime to the stimuli.
+
+#- There is a significant difference in reaction time for positive and negative faces
+#- Higher valence score for the words lead to quicker reaction times
+```
+## Repeated measures model using LmerTest
+
+```{r}
+library(lmerTest)
+#can be made more complex ad libitum
+model1<-lmer(rt~img+(1|ID)+(1|word),data=WordFace)
+summary(model1)
+
+model01<-lmer(rt~word_label+(1|ID),data=WordFace, REML = FALSE)
+summary(model01)
+```
+
+## Repeated measures model using a gamma distribution as the
+```{r}
+#Inspiration found in https://www.frontiersin.org/articles/10.3389/fpsyg.2015.01171/full
+
+# Sometimes only converges if helped a bit with the random intercepts
+WordFace2 <- subset(WordFace,correct_resp > 0.7)
+WordFace2
+WordFace3 <- subset(WordFace2,rt>0.2)
+
+model2 <- glmer(rt~img+(1|ID)+(1|word),data=WordFace3,family = Gamma(link = 'identity'))
+summary(model2)
+
+```
+
+
+## Including Plots
+
+```{r}
+library(ggplot2)
+
+figure<-ggplot(aes(x=word_label,y=rt),data=WordFace)+geom_boxplot()
+figure
+```
+
+```{r}
+library(ggplot2)
+
+figure<-ggplot(aes(x=word_score_pc,y=rt),data=WordFace)+geom_smooth()+facet_wrap(ID~.)
+figure
+
+figure<-ggplot(aes(x=word_score_pc,y=rt),data=WordFace)+geom_smooth()+geom_text(aes(label=word,col=img))+facet_wrap(ID~.)
+figure
+```
+
+
+```{r}
+library(ggplot2)
+
+# Plot trial in session effect per participant (fails a bit because some participants lack data)
+#figure<-ggplot(aes(x=no,y=rt),data=WordFace)+geom_smooth()+geom_point(aes(col=word_label))+facet_wrap(~ID)
+#figure
+
+# Plot trial in session effect
+figure<-ggplot(aes(x=no,y=rt),data=WordFace)+geom_smooth()
+figure
+
+# Time of day using a nonlinear fit and a linear
+figure<-ggplot(aes(x=time,y=rt),data=WordFace)+geom_smooth()+geom_smooth(formula=y ~ poly(x, 1),method='lm',col='red')
+figure
+# Time of day with individual data points to show variability
+figure<-ggplot(aes(x=time,y=rt),data=WordFace)+geom_point(alpha=0.3,col='darkgreen')+geom_smooth()+geom_smooth(formula=y ~ poly(x, 1),method='lm',col='red')
+figure
+```
+
+#### A table showing mean RT over words
+
+```{r, warning=FALSE, message=FALSE, cache=FALSE}
+
+# A table showing the proportion of males drawn left as a function of the independent variables
+WordFaceAgg <-aggregate(WordFace$rt,
+    by=list(WordFace$word,WordFace$word_score_pc,WordFace$word_label),
+                    FUN=median, na.rm=TRUE)
+
+library(reshape)
+names(WordFaceAgg)<-c('word','word_score_pc','word_label','rt')
+
+#Plot median response times for words as function of sentiment score and class
+figure<-ggplot(aes(x=word_score_pc,y=rt),data=WordFaceAgg)+geom_smooth()+geom_text(aes(label=word,col=word_label))
+figure
+```
+
+# Import Binder semantic features
+```{r}
+
+pacman::p_load(xlsx, rJava)
+
+binder <- read.xlsx('WordSet1_Ratings.xlsx', sheetIndex = 1)
+
+
+# Find indices of columns
+cols_binder_sem <- c(6:70)
+cols_binder_full <- c(6:74)
+
+# Format columns
+to_numeric <- function(x) {as.numeric(levels(x))[x]}
+to_convert <- names(dplyr::select_if(binder[,cols_binder_full], is.factor))
+
+
+#Convert semantic ratings to numeric values
+binder[, to_convert] <- sapply(binder[, to_convert], to_numeric)
+
+#Function to impute NAs with NAmean
+na_to_mean <- function(x) {x[is.na(x)]= mean(x, na.rm=TRUE);return(x)}
+binder[, to_convert] <- sapply(binder[, cols_binder_full], na_to_mean)
+
+#scale binder
+binder[,cols_binder_full] <- apply(binder[,cols_binder_full], 2, scale)
+
+head(binder)
+
+binderpca_raw<-princomp(binder[,6:70])
+binderpca<-data.frame(binder$Word,binderpca_raw$scores) %>%
+rename_at(vars(names(.)[1]), funs(c('word'))) 
+```
+
+### Merge RT data and Binder data
+```{r}
+# Add binder features
+WordFace_Bin <- WordFace  %>%
+  merge(., binderpca, by = 'word')
+
+```
+
+### Testing whether Binder PCA scores improves models for RT
+```{r}
+fmla <- as.formula(paste("rt ~ ",paste('img+imgN1+no+session+delay_frames_before+(1|ID)+(1|word)')))
+#fmla<-as.formula(paste(fmla,paste('+(1|ID)')))
+model1<-lmer(fmla , data=WordFace_Bin)
+
+fmla <- as.formula(paste("rt ~ ", paste(names(WordFace_Bin[,45:109]), collapse= "+"),paste('+img+imgN1+no+session+delay_frames_before+(1|ID)+(1|word)')))
+#fmla<-as.formula(paste(fmla,paste('+(1|ID)')))
+model_pca<-lmer(fmla , data=WordFace_Bin)
+
+summary(model_pca)
+anova(model1,model_pca)
