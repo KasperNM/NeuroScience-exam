@@ -1,0 +1,119 @@
+---
+title: "Factoranalysis"
+author: "Kasper Michelsen"
+date: "12/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse, psych, GPArotation, corpcor)
+
+```
+
+
+```{r}
+getwd()
+
+
+library(readxl)
+
+View(WordSet1_Ratings)
+
+WordSet1_Ratings <- as_data_frame(WordSet1_Ratings)
+Spatialsubset1 <- subset.data.frame(WordSet1_Ratings, select = c("Landmark","Scene", "Path"))
+Spatialsubsetall <- subset.data.frame(WordSet1_Ratings, select = c("Landmark","Scene", "Path", "Near", "Toward", "Away"))
+
+fa.parallel(Spatialsubset1)
+
+fa.parallel(binder)
+
+str(binder)
+
+binder$Word <- NULL
+
+binder$Complexity <- as.numeric()
+
+WordSet1_Ratings$Word <- NULL
+
+WordSet1_Ratings <- as.numeric(Wo)
+WordSet1_Ratings <- as.numeric(WordSet1_Ratings)
+
+
+fact1 <- factanal(Spatialsubset1, factor = 1, rotation = "varimax")
+fact1
+
+fact2 <- 
+```
+
+
+```{r}
+# Find indices of columns
+cols_binder_sem <- c(6:70)
+cols_binder_full <- c(6:74)
+
+# Format columns
+to_numeric <- function(x) {as.numeric(levels(x))[x]}
+to_convert <- names(dplyr::select_if(binder[,cols_binder_full], is.factor))
+
+
+#Convert semantic ratings to numeric values
+binder[, to_convert] <- sapply(binder[, to_convert], to_numeric)
+
+#Function to impute NAs with NAmean
+na_to_mean <- function(x) {x[is.na(x)]= mean(x, na.rm=TRUE);return(x)}
+sub[, to_convert] <- sapply(binder[, cols_binder_full], na_to_mean)
+
+#scale binder
+binder[,cols_binder_full] <- apply(binder[,cols_binder_full], 2, scale,)
+
+head(binder)
+
+binderpca_raw<-princomp(binder[,6:70])
+binderpca<-data.frame(binder$Word,binderpca_raw$scores) %>%
+rename_at(vars(names(.)[1]), funs(c('word'))) 
+
+```
+
+
+```{r}
+print(binder)
+sub$Complexity <- as.numeric(sub$Complexity)
+
+
+
+sub <- subset.data.frame(binder, select = c("Vision", "Bright", "Dark", "Color", "Pattern", "Large", "Small", "Motion", "Biomotion", "Fast", "Slow", "Shape", "Complexity", "Face", "Body", "Touch", "Temperature", "Texture", "Weight", "Pain", "Audition", "Loud", "Low", "High", "Sound", "Music", "Speech", "Taste", "Smell", "Head", "UpperLimb", "LowerLimb", "Practice", "Landmark","Scene", "Path", "Near", "Away", "Toward", "Number", "Time", "Duration", "Long", "Short", "Caused", "Consequential", "Social", "Human", "Communication","Self", "Cognition", "Benefit", "Harm", "Pleasant", "Unpleasant", "Happy", "Sad", "Angry", "Disgusted", "Fearful", "Surprised", "Drive", "Needs", "Attention", "Arousal"))
+
+str(sub)
+fa.parallel(sub)
+
+
+
+factor1 <- fa(x, factor = 10, rotation = "varimax",  = 0.5, order = TRUE)
+factor1 <- fa(x, nfactors = 10, rotate = "varimax", fm = "minres")
+x <- na.omit(sub)
+print(factor1, cut = 0.5, order = TRUE)
+factor1$loadings
+factors <- as.data.frame(factor1$loadings)
+
+load <- factor1$loadings[,6]
+view(load)
+
+try <- cbind(sub, load)
+
+factor1
+xbind <- na.omit(Binder)
+
+factor1$scores
+
+subfactor1 <- subset.data.frame(factor1$scores[,5:6])
+
+dfscores <- as.data.frame(factor1$scores)
+
+combind <- cbind(x, subfactor1)
+
+combinder <- cbind(binder, subfactor1)
+
+?rbind
+```
+
